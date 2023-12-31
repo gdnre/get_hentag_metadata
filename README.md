@@ -1,0 +1,2 @@
+# get_hentag_metadata
+自动压缩漫画文件，从hentag网站获取元数据分类漫画压缩包
