@@ -1,3 +1,4 @@
+import json
 import sys
 from my_package.my_db_class import *
 from my_package.get_config import *
@@ -62,6 +63,7 @@ def main_processing(input_args):
    62.将手动设置的搜索名导入数据库，并重置搜索错误标记列
     7.根据hentag_id下载网站上的元数据，存到数据库
     8.将数据库中的hentag元数据输出为info.json文件
+    9.修改lanraragi备份文件，添加数据库中的tag，保存到脚本所在目录，{RED}进行此操作前请务必备份lanraragi其它数据{GREEN}，已测试docker的0.90汉化版可用
     
 等待输入,按字母q退出：{CEND}''')
             user_input = input('')
@@ -147,7 +149,7 @@ def main_processing(input_args):
                 print('>>>执行清理命令完毕')
             elif user_input == '7':
                 print('输入7，下载hentag元数据>>>')
-                hentag_db.request_hentag_metadata_all_each(max_retry_count, timeout_rule, wait_time,headers)
+                hentag_db.request_hentag_metadata_all_each(max_retry_count, timeout_rule, wait_time, headers)
                 print('>>>下载并导入完毕，如果仍有请求失败的，请再次执行该操作')
             elif user_input == '8':
                 print('输入8，将数据库中的hentag元数据输出为info.json文件>>>')
@@ -155,6 +157,13 @@ def main_processing(input_args):
                     globals()['sort_root_path'] = input('>>>漫画分类的目标文件夹不存在，请临时输入文件夹:')
                 hentag_db.save_hentag_metadata_to_json_file(sort_root_path)
                 print(f'>>>元数据已输出到{sort_root_path}的hentag_metadata文件夹')
+            elif user_input == '9':
+                print('输入9，修改lanraragi备份文件>>>')
+                modify_backup_path = modify_lrr_backup()
+                if modify_backup_path:
+                    print(f'>>>修改lanraragi备份文件成功，修改后的备份文件存放到{modify_backup_path}')
+                else:
+                    print('>>>修改lanraragi备份文件失败')
             else:
                 print(f'{RED}输入>{user_input}<，没有对应操作，请重新输入{CEND}')
         except KeyboardInterrupt:
@@ -162,6 +171,54 @@ def main_processing(input_args):
             continue
     print('============================退出主处理方法============================')
     hentag_db.close_db()
+
+
+def tran_to_lrr_tag(db_tags: str, backup_tags: str):
+    backup_list = []
+    if backup_tags:
+        backup_list = backup_tags.split(',')
+    tags_dict = json.loads(db_tags)
+    tag_list = []
+    if not tags_dict:
+        return
+    for key, values in tags_dict.items():
+        if not values:
+            continue
+        for value in values:
+            if not value:
+                continue
+            this_tag = rf'{key}:{value}'
+            if (not backup_list) or not (this_tag in backup_list):
+                tag_list.append(this_tag)
+    text = ','.join(tag_list)
+    return text
+
+
+def modify_lrr_backup(backup_name=None):
+    modify_backup_name = 'gtm_lrr_backup.json'
+    if backup_name is None:
+        backup_name = 'backup.json'
+    if not os.path.isfile(backup_name):
+        print(f'lanraragi备份文件不存在，请将其放到{script_dir}下')
+        return
+    with open(backup_name, 'r', encoding='utf-8') as f:
+        lrr_backup = f.read()
+        lrr_backup = lrr_backup.replace(r'\/',r'/')
+    lrr_backup = json.loads(lrr_backup)
+    for value in lrr_backup['archives']:  # 遍历备份文件中的每个档案
+        current_tag = value['tags']
+        current_id = value['arcid']
+        hentag_data = hentag_db.get_data('tags', fetch='one', id=current_id)
+        if hentag_data:
+            hentag_tag, = hentag_data
+            if hentag_tag:
+                lrr_text = tran_to_lrr_tag(hentag_tag, current_tag)
+                if lrr_text:
+                    value['tags'] = rf'{current_tag},{lrr_text}'
+    with open(modify_backup_name, 'w', encoding='utf-8') as wf:
+        target_text = json.dumps(lrr_backup, ensure_ascii=False).replace('/', '\\/')
+        wf.write(target_text)
+        return os.path.abspath(modify_backup_name)
 
 
 db_path = 'file_list.db'
