@@ -1,1 +1,1 @@
-python3 gtm.py
+python3 ghm.py
